@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +16,8 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.transform.exception.InvalidDataException;
+
 public class Record {
 
 	private final String address;
@@ -24,8 +27,8 @@ public class Record {
 	private final ZonedDateTime timestamp;
 	private final Duration fooDuration;
 	private final Duration barDuration;
-	
-	public Record(RecordRaw raw) {
+
+	public Record(RecordRaw raw) throws InvalidDataException {
 		this.address = raw.getAddress();
 		this.fullName = raw.getFullName().toUpperCase(Locale.ENGLISH);
 		this.zip = StringUtils.leftPad(raw.getZip(), 5, "0");
@@ -38,11 +41,11 @@ public class Record {
 	public List<String> headers() {
 		return new ArrayList<String>(toMap().keySet());
 	}
-	
+
 	public List<String> values() {
 		return new ArrayList<String>(toMap().values());
 	}
-	
+
 	private Map<String, String> toMap() {
 		Map<String, String> out = new LinkedHashMap<>();
 		out.put("Timestamp", timestamp.format(DateTimeFormatter.ISO_DATE_TIME));
@@ -55,21 +58,25 @@ public class Record {
 		out.put("TotalDuration", formatMillis(fooDuration.plus(barDuration).toMillis()));
 		return out;
 	}
-	
+
 	private String formatMillis(long millis) {
 		double seconds = millis / 1000.0;
 		return String.valueOf(seconds);
 	}
-	
-	static ZonedDateTime convertTimestamp(String value) {
-		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("M/d/yy h:mm:ss a");
-		LocalDateTime inputDate = LocalDateTime.parse(value, dateFormatter);
-		ZonedDateTime pacificTime = ZonedDateTime.of(inputDate, ZoneId.of("America/Los_Angeles"));
-		ZonedDateTime easternTime = pacificTime.withZoneSameInstant(ZoneId.of("-05:00"));
-		return easternTime;
+
+	static ZonedDateTime convertTimestamp(String value) throws InvalidDataException {
+		try {
+			DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("M/d/yy h:mm:ss a");
+			LocalDateTime inputDate = LocalDateTime.parse(value, dateFormatter);
+			ZonedDateTime pacificTime = ZonedDateTime.of(inputDate, ZoneId.of("America/Los_Angeles"));
+			ZonedDateTime easternTime = pacificTime.withZoneSameInstant(ZoneId.of("-05:00"));
+			return easternTime;
+		} catch (DateTimeParseException e) {
+			throw new InvalidDataException("unable to parse timestamp " + value);			
+		}
 	}
-	
-	static Duration parseDuration(String value) {		
+
+	static Duration parseDuration(String value) throws InvalidDataException {
 		Pattern pattern = Pattern.compile("(\\d+):(\\d+):(\\d+).(\\d+)");
 		Matcher matcher = pattern.matcher(value);
 		if (matcher.find()) {
@@ -79,9 +86,9 @@ public class Record {
 			int millis = Integer.parseInt(matcher.group(4));
 			return Duration.ofHours(hours).plusMinutes(minutes).plusSeconds(seconds).plusMillis(millis);
 		}
-		return null;
+		throw new InvalidDataException("unable to parse duration " + value);
 	}
-	
+
 	public String getAddress() {
 		return address;
 	}
@@ -109,5 +116,5 @@ public class Record {
 	public Duration getBarDuration() {
 		return barDuration;
 	}
-	
+
 }
